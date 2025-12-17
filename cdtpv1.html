@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Car Dealership Tycoon</title>
+<style>
+body { font-family: Arial; background:#eee; }
+.container { width:96%; margin:auto; }
+.car { background:#fff; border:1px solid #ccc; padding:10px; margin:8px; width:250px; display:inline-block; }
+.button { padding:6px 10px; background:#007BFF; color:#fff; border:none; cursor:pointer; margin:2px; }
+.button:hover { background:#0056b3; }
+.money { font-size:18px; margin:10px 0; }
+.tabs button { margin-right:5px; }
+.rarity-Common { color:gray; }
+.rarity-Rare { color:blue; }
+.rarity-Epic { color:purple; }
+.rarity-Legendary { color:gold; }
+</style>
+</head>
+<body>
+
+<div class="container">
+<h1>🚗 Car Dealership Tycoon</h1>
+<div class="money">
+💰 $<span id="money"></span> | 💳 Debt: $<span id="debt"></span>
+</div>
+
+<button class="button" onclick="takeLoan()">Take Loan</button>
+<button class="button" onclick="saveGame()">Save Code</button>
+<button class="button" onclick="loadGame()">Load Code</button>
+
+<h2>Dealerships</h2>
+<div class="tabs">
+  <button class="button" onclick="showDealer('economy')">Economy</button>
+  <button class="button" onclick="showDealer('used')">Used</button>
+  <button class="button" onclick="showDealer('performance')">Performance</button>
+  <button class="button" onclick="showDealer('luxury')">Luxury</button>
+  <button class="button" onclick="showDealer('classic')">Classic</button>
+  <button class="button" onclick="showDealer('hyper')">Hypercars</button>
+</div>
+
+<div id="dealership"></div>
+
+<h2>Your Cars</h2>
+<div id="myCars"></div>
+
+<h2>Public Auction</h2>
+<div id="publicAuction"></div>
+
+<h2>Your Auction</h2>
+<div id="playerAuction"></div>
+
+<h2>Events</h2>
+<div id="events"></div>
+</div>
+
+<script>
+let money = 120000;
+let debt = 0;
+let interestRate = 0.05;
+let eventMultiplier = 1;
+let currentDealer = "economy";
+
+const rarities = { Common:1, Rare:1.3, Epic:1.7, Legendary:2.5 };
+
+/* ---------- DEALERSHIP DATABASE ---------- */
+
+const dealers = {
+economy: [
+ {model:"Toyota Corolla", price:20000, rarity:"Common"},
+ {model:"Honda Civic", price:22000, rarity:"Common"},
+ {model:"Hyundai Elantra", price:21000, rarity:"Common"},
+ {model:"Kia Forte", price:19500, rarity:"Common"}
+],
+used: [
+ {model:"Ford Focus 2012", price:9000, rarity:"Common"},
+ {model:"Toyota Camry 2010", price:8500, rarity:"Common"},
+ {model:"BMW 328i 2008", price:12000, rarity:"Rare"},
+ {model:"Nissan Altima 2011", price:7800, rarity:"Common"}
+],
+performance: [
+ {model:"Mazda RX-7 FD", price:95000, rarity:"Rare"},
+ {model:"Toyota Supra MK4", price:140000, rarity:"Epic"},
+ {model:"Nissan Skyline R34", price:130000, rarity:"Epic"},
+ {model:"Chevrolet Corvette C7", price:90000, rarity:"Epic"},
+ {model:"Ford Mustang GT", price:48000, rarity:"Rare"}
+],
+luxury: [
+ {model:"BMW M5", price:110000, rarity:"Rare"},
+ {model:"Mercedes S-Class", price:125000, rarity:"Rare"},
+ {model:"Audi RS7", price:115000, rarity:"Epic"},
+ {model:"Porsche Panamera", price:140000, rarity:"Epic"}
+],
+classic: [
+ {model:"1969 Ford Mustang", price:85000, rarity:"Epic"},
+ {model:"1970 Dodge Charger", price:95000, rarity:"Epic"},
+ {model:"Mercedes 300SL", price:400000, rarity:"Legendary"},
+ {model:"Ferrari F40", price:1200000, rarity:"Legendary"}
+],
+hyper: [
+ {model:"Lamborghini Aventador", price:500000, rarity:"Legendary"},
+ {model:"McLaren P1", price:1500000, rarity:"Legendary"},
+ {model:"Bugatti Chiron", price:3000000, rarity:"Legendary"}
+]
+};
+
+let myCars = [];
+
+/* ---------- UTIL ---------- */
+
+function randomCondition(min=60){
+  return Math.floor(Math.random()*(100-min))+min;
+}
+
+function updateUI(){
+  document.getElementById("money").textContent = Math.floor(money);
+  document.getElementById("debt").textContent = Math.floor(debt);
+  displayDealer();
+  displayMyCars();
+}
+
+/* ---------- DEALER VIEW ---------- */
+
+function showDealer(name){
+  currentDealer = name;
+  displayDealer();
+}
+
+function displayDealer(){
+  const d=document.getElementById("dealership");
+  d.innerHTML="";
+  dealers[currentDealer].forEach(car=>{
+    let condition = currentDealer==="used" ? randomCondition(40) : randomCondition(70);
+    const price = Math.floor(car.price * rarities[car.rarity] * eventMultiplier);
+    d.innerHTML+=`
+      <div class="car">
+        <h3>${car.model}</h3>
+        <p class="rarity-${car.rarity}">${car.rarity}</p>
+        <p>Estimated Condition: ${condition}%</p>
+        <p>Price: $${price}</p>
+        <button class="button" onclick='buyCar(${JSON.stringify(car)},${condition})'>Buy</button>
+      </div>`;
+  });
+}
+
+function buyCar(car,condition){
+  const cost=Math.floor(car.price * rarities[car.rarity] * eventMultiplier);
+  if(money>=cost){
+    money-=cost;
+    myCars.push({...car,condition});
+    updateUI();
+  }
+}
+
+/* ---------- PLAYER CARS ---------- */
+
+function displayMyCars(){
+  const m=document.getElementById("myCars");
+  m.innerHTML="";
+  myCars.forEach((car,i)=>{
+    const value=Math.floor(car.price*(car.condition/100)*rarities[car.rarity]);
+    m.innerHTML+=`
+      <div class="car">
+        <h3>${car.model}</h3>
+        <p class="rarity-${car.rarity}">${car.rarity}</p>
+        <p>Condition: ${car.condition}%</p>
+        <p>Value: $${value}</p>
+        <button class="button" onclick="repairCar(${i})">Repair</button>
+        <button class="button" onclick="sellCar(${i})">Sell</button>
+        <button class="button" onclick="startPlayerAuction(${i})">Auction</button>
+      </div>`;
+  });
+}
+
+function repairCar(i){
+  const cost=Math.floor((100-myCars[i].condition)*350);
+  if(money>=cost){
+    money-=cost;
+    myCars[i].condition=100;
+    updateUI();
+  }
+}
+
+function sellCar(i){
+  const car=myCars.splice(i,1)[0];
+  money+=Math.floor(car.price*(car.condition/100)*rarities[car.rarity]);
+  updateUI();
+}
+
+/* ---------- PLAYER AUCTION ---------- */
+
+let playerAuction=null;
+let auctionTimer=null;
+
+function startPlayerAuction(index){
+  playerAuction=myCars.splice(index,1)[0];
+  let bid=Math.floor(playerAuction.price*(playerAuction.condition/100)*0.6);
+  let time=10;
+
+  clearInterval(auctionTimer);
+  auctionTimer=setInterval(()=>{
+    bid+=Math.floor(Math.random()*bid*0.12);
+    time--;
+
+    document.getElementById("playerAuction").innerHTML=`
+      <div class="car">
+        <h3>${playerAuction.model}</h3>
+        <p>Current Bid: $${bid}</p>
+        <p>Time Left: ${time}s</p>
+      </div>`;
+
+    if(time<=0){
+      clearInterval(auctionTimer);
+      money+=bid;
+      document.getElementById("playerAuction").innerHTML=
+        `<h3>${playerAuction.model} sold for $${bid}!</h3>`;
+      updateUI();
+    }
+  },1000);
+
+  updateUI();
+}
+
+/* ---------- PUBLIC AUCTION ---------- */
+
+let publicAuction=null;
+
+function spawnAuction(){
+  const allCars=Object.values(dealers).flat();
+  const base=allCars[Math.floor(Math.random()*allCars.length)];
+  publicAuction={...base,condition:randomCondition(),bid:Math.floor(base.price*0.5)};
+  document.getElementById("publicAuction").innerHTML=`
+    <div class="car">
+      <h3>${publicAuction.model}</h3>
+      <p class="rarity-${publicAuction.rarity}">${publicAuction.rarity}</p>
+      <p>Condition: ${publicAuction.condition}%</p>
+      <p>Current Bid: $${publicAuction.bid}</p>
+      <button class="button" onclick="bidPublicAuction()">Bid</button>
+    </div>`;
+}
+
+function bidPublicAuction(){
+  const inc=Math.floor(Math.random()*5000)+4000;
+  if(money>=publicAuction.bid+inc){
+    publicAuction.bid+=inc;
+    if(Math.random()>0.6){
+      money-=publicAuction.bid;
+      myCars.push(publicAuction);
+      publicAuction=null;
+      document.getElementById("publicAuction").innerHTML="You won the auction!";
+      updateUI();
+    }
+  }
+}
+
+/* ---------- LOANS ---------- */
+
+function takeLoan(){
+  const loan=50000;
+  money+=loan;
+  debt+=loan*(1+interestRate);
+  updateUI();
+}
+
+/* ---------- EVENTS ---------- */
+
+function randomEvent(){
+  const r=Math.random();
+  if(r<0.3){
+    eventMultiplier=0.8;
+    showEvent("📉 Market Crash! Prices down");
+  }else if(r<0.6){
+    eventMultiplier=1.25;
+    showEvent("📈 Market Boom! Prices up");
+  }else{
+    showEvent("🏆 Classic Cars in High Demand!");
+  }
+  setTimeout(()=>eventMultiplier=1,15000);
+}
+
+function showEvent(msg){
+  document.getElementById("events").innerHTML=`<p>${msg}</p>`;
+}
+
+/* ---------- SAVE / LOAD ---------- */
+
+function saveGame(){
+  const code=btoa(JSON.stringify({money,debt,myCars}));
+  prompt("Copy save code:",code);
+}
+
+function loadGame(){
+  const code=prompt("Paste save code:");
+  if(code){
+    const data=JSON.parse(atob(code));
+    money=data.money;
+    debt=data.debt;
+    myCars=data.myCars;
+    updateUI();
+  }
+}
+
+/* ---------- TIMERS ---------- */
+
+setInterval(spawnAuction,30000);
+setInterval(randomEvent,40000);
+setInterval(()=>{ if(debt>0) debt*=1.02; updateUI(); },20000);
+
+updateUI();
+spawnAuction();
+</script>
+
+</body>
+</html>
