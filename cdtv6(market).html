@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Car Dealership Tycoon</title>
+<style>
+body { font-family: Arial; background:#eee; }
+.container { width:96%; margin:auto; }
+.car { background:#fff; border:1px solid #ccc; padding:10px; margin:8px; width:250px; display:inline-block; }
+.button { padding:6px 10px; background:#007BFF; color:#fff; border:none; cursor:pointer; margin:2px; }
+.button:hover { background:#0056b3; }
+.money { font-size:18px; margin:10px 0; }
+.tabs button { margin-right:5px; }
+.rarity-Common { color:gray; }
+.rarity-Rare { color:blue; }
+.rarity-Epic { color:purple; }
+.rarity-Legendary { color:gold; }
+</style>
+</head>
+<body>
+
+<div class="container">
+<h1>🚗 Car Dealership Tycoon</h1>
+
+<div class="money">
+💰 $<span id="money"></span> | 💳 Debt: $<span id="debt"></span>
+</div>
+
+<button class="button" onclick="takeLoan()">Take Loan</button>
+<button class="button" onclick="saveGame()">Save Code</button>
+<button class="button" onclick="loadGame()">Load Code</button>
+
+<h2>Dealerships</h2>
+<div class="tabs">
+  <button class="button" onclick="openMarket()">📊 Market</button>
+  <button class="button" onclick="showDealer('economy')">Economy</button>
+  <button class="button" onclick="showDealer('used')">Used</button>
+  <button class="button" onclick="showDealer('performance')">Performance</button>
+  <button class="button" onclick="showDealer('luxury')">Luxury</button>
+  <button class="button" onclick="showDealer('classic')">Classic</button>
+  <button class="button" onclick="showDealer('hyper')">Hypercars</button>
+</div>
+
+<div id="dealership"></div>
+
+<h2>Your Cars</h2>
+<div id="myCars"></div>
+
+<h2>Public Auction</h2>
+<div id="publicAuction"></div>
+
+<h2>Your Auction</h2>
+<div id="playerAuction"></div>
+
+<h2>Events</h2>
+<div id="events"></div>
+
+<h2>Car Market</h2>
+<select id="marketSelect" onchange="drawMarket()"></select>
+<canvas id="marketCanvas" width="800" height="300"></canvas>
+</div>
+
+<script>
+let money = 120000;
+let debt = 0;
+let interestRate = 0.05;
+let eventMultiplier = 1;
+let currentDealer = "economy";
+
+const rarities = { Common:1, Rare:1.3, Epic:1.7, Legendary:2.5 };
+
+/* ---------- DEALERS ---------- */
+const dealers = {
+economy:[
+ {model:"Toyota Corolla", price:20000, rarity:"Common"},
+ {model:"Honda Civic", price:22000, rarity:"Common"},
+ {model:"Hyundai Elantra", price:21000, rarity:"Common"},
+ {model:"Kia Forte", price:19500, rarity:"Common"}
+],
+used:[
+ {model:"Ford Focus 2012", price:9000, rarity:"Common"},
+ {model:"Toyota Camry 2010", price:8500, rarity:"Common"},
+ {model:"BMW 328i 2008", price:12000, rarity:"Rare"},
+ {model:"Nissan Altima 2011", price:7800, rarity:"Common"}
+],
+performance:[
+ {model:"Mazda RX-7 FD", price:95000, rarity:"Rare"},
+ {model:"Toyota Supra MK4", price:140000, rarity:"Epic"},
+ {model:"Nissan Skyline R34", price:130000, rarity:"Epic"},
+ {model:"Chevrolet Corvette C7", price:90000, rarity:"Epic"},
+ {model:"Ford Mustang GT", price:48000, rarity:"Rare"}
+],
+luxury:[
+ {model:"BMW M5", price:110000, rarity:"Rare"},
+ {model:"Mercedes S-Class", price:125000, rarity:"Rare"},
+ {model:"Audi RS7", price:115000, rarity:"Epic"},
+ {model:"Porsche Panamera", price:140000, rarity:"Epic"}
+],
+classic:[
+ {model:"1969 Ford Mustang", price:85000, rarity:"Epic"},
+ {model:"1970 Dodge Charger", price:95000, rarity:"Epic"},
+ {model:"Mercedes 300SL", price:400000, rarity:"Legendary"},
+ {model:"Ferrari F40", price:1200000, rarity:"Legendary"}
+],
+hyper:[
+ {model:"Lamborghini Aventador", price:500000, rarity:"Legendary"},
+ {model:"McLaren P1", price:1500000, rarity:"Legendary"},
+ {model:"Bugatti Chiron", price:3000000, rarity:"Legendary"}
+]
+};
+
+let myCars = [];
+
+/* ---------- MARKET SYSTEM ---------- */
+let marketTick = 0;
+const marketData = {};
+
+function initMarket(){
+  Object.values(dealers).flat().forEach(car=>{
+    marketData[car.model] = {
+      base: car.price,
+      multiplier: 1,
+      history: [{tick:0,value:car.price}]
+    };
+  });
+}
+
+function getMarketPrice(car){
+  return Math.floor(
+    marketData[car.model].base *
+    marketData[car.model].multiplier *
+    rarities[car.rarity] *
+    eventMultiplier
+  );
+}
+
+function marketUpdate(){
+  marketTick++;
+  Object.values(marketData).forEach(m=>{
+    m.multiplier = Math.max(0.4, Math.min(3, m.multiplier + (Math.random()-0.5)*0.04));
+    m.history.push({tick:marketTick,value:Math.floor(m.base*m.multiplier)});
+    if(m.history.length>120) m.history.shift();
+  });
+}
+
+/* ---------- UI ---------- */
+function updateUI(){
+  moneySpan.textContent=Math.floor(money);
+  debtSpan.textContent=Math.floor(debt);
+  displayDealer();
+  displayMyCars();
+}
+
+const moneySpan=document.getElementById("money");
+const debtSpan=document.getElementById("debt");
+
+/* ---------- DEALERSHIP ---------- */
+function showDealer(n){ currentDealer=n; displayDealer(); }
+
+function displayDealer(){
+  dealership.innerHTML="";
+  dealers[currentDealer].forEach(car=>{
+    const condition=randomCondition(currentDealer==="used"?40:70);
+    dealership.innerHTML+=`
+    <div class="car">
+      <h3>${car.model}</h3>
+      <p class="rarity-${car.rarity}">${car.rarity}</p>
+      <p>Condition: ${condition}%</p>
+      <p>Price: $${getMarketPrice(car)}</p>
+      <button class="button" onclick='buyCar(${JSON.stringify(car)},${condition})'>Buy</button>
+    </div>`;
+  });
+}
+
+function buyCar(car,condition){
+  const cost=getMarketPrice(car);
+  if(money>=cost){
+    money-=cost;
+    myCars.push({...car,condition});
+    updateUI();
+  }
+}
+
+/* ---------- PLAYER CARS ---------- */
+function displayMyCars(){
+  myCarsDiv.innerHTML="";
+  myCars.forEach((car,i)=>{
+    myCarsDiv.innerHTML+=`
+    <div class="car">
+      <h3>${car.model}</h3>
+      <p>Condition: ${car.condition}%</p>
+      <p>Value: $${Math.floor(getMarketPrice(car)*(car.condition/100))}</p>
+      <button class="button" onclick="sellCar(${i})">Sell</button>
+    </div>`;
+  });
+}
+
+function sellCar(i){
+  const car=myCars.splice(i,1)[0];
+  money+=Math.floor(getMarketPrice(car)*(car.condition/100));
+  updateUI();
+}
+
+const dealership=document.getElementById("dealership");
+const myCarsDiv=document.getElementById("myCars");
+
+/* ---------- EVENTS ---------- */
+function randomEvent(){
+  const r=Math.random();
+  if(r<0.3){ Object.values(marketData).forEach(m=>m.multiplier*=0.85); showEvent("📉 Market Crash"); }
+  else if(r<0.6){ Object.values(marketData).forEach(m=>m.multiplier*=1.2); showEvent("📈 Market Boom"); }
+  else showEvent("🚗 Stable Market");
+}
+
+function showEvent(t){ events.innerHTML=`<p>${t}</p>`; }
+const events=document.getElementById("events");
+
+/* ---------- MARKET GRAPH ---------- */
+function openMarket(){
+  marketSelect.innerHTML="";
+  Object.keys(marketData).forEach(k=>marketSelect.innerHTML+=`<option>${k}</option>`);
+  drawMarket();
+}
+
+function drawMarket(){
+  const car=marketData[marketSelect.value];
+  if(!car) return;
+  ctx.clearRect(0,0,800,300);
+  ctx.beginPath();
+  const max=Math.max(...car.history.map(h=>h.value));
+  car.history.forEach((p,i)=>{
+    ctx.lineTo(i*(800/car.history.length),300-(p.value/max)*300);
+  });
+  ctx.strokeStyle="#007BFF";
+  ctx.stroke();
+}
+
+const marketSelect=document.getElementById("marketSelect");
+const ctx=document.getElementById("marketCanvas").getContext("2d");
+
+/* ---------- UTIL ---------- */
+function randomCondition(min){ return Math.floor(Math.random()*(100-min))+min; }
+function takeLoan(){ money+=50000; debt+=52500; updateUI(); }
+function saveGame(){ prompt("Save:",btoa(JSON.stringify({money,debt,myCars}))); }
+function loadGame(){ const d=JSON.parse(atob(prompt("Load:"))); money=d.money; debt=d.debt; myCars=d.myCars; updateUI(); }
+
+/* ---------- START ---------- */
+initMarket();
+updateUI();
+spawnAuction?.();
+setInterval(marketUpdate,10000);
+setInterval(randomEvent,40000);
+</script>
+</body>
+</html>
